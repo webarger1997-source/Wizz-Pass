@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WizzPass Mobile</title>
+    <style>
+        :root { --p: #2d004d; --s: #e3127e; }
+        body { font-family: sans-serif; background: var(--p); color: white; margin: 0; padding: 15px; }
+        .card { background: white; color: #333; padding: 15px; border-radius: 10px; margin-bottom: 10px; border-left: 5px solid var(--s); }
+        input { padding: 10px; border-radius: 5px; border: none; width: 60%; }
+        button { background: var(--s); color: white; border: none; padding: 10px; border-radius: 5px; font-weight: bold; }
+        .chain { background: rgba(255,255,255,0.1); padding: 10px; border-radius: 5px; margin: 10px 0; font-size: 0.9rem; }
+        .error { color: #ffbcbc; font-size: 0.8rem; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <h2>WizzPass Explorer</h2>
+    
+    <div style="display:flex; gap:5px;">
+        <input type="text" id="air" placeholder="Airport (STN, BUD, WAW)" value="STN">
+        <button onclick="start()">Search</button>
+    </div>
+
+    <div id="chainBox" class="chain" style="display:none">Chain: <span id="path"></span></div>
+    <div id="status" style="margin-top:10px; font-size:0.8rem; opacity:0.7;"></div>
+    <div id="results" style="margin-top:20px;"></div>
+
+<script>
+    const KEY = 'e748ad17c9076dfd173a96ef22731e07';
+    let lastArr = null;
+    let route = [];
+
+    async function start() {
+        const code = document.getElementById('air').value.toUpperCase();
+        route = [code];
+        lastArr = null;
+        load(code);
+    }
+
+    async function load(code) {
+        const resDiv = document.getElementById('results');
+        const status = document.getElementById('status');
+        resDiv.innerHTML = "Loading...";
+        status.innerText = `Fetching Wizz flights from ${code}...`;
+
+        try {
+            // Note: Use 'airline_iata=W6' for Wizz Air
+            const r = await fetch(`https://airlabs.co/api/v9/schedules?dep_iata=${code}&airline_iata=W6&api_key=${KEY}`);
+            const d = await r.json();
+            
+            if (!d.response || d.response.length === 0) {
+                resDiv.innerHTML = `<div class="error">No Wizz flights found for ${code}.<br>Tip: Try a major hub like BUD or LTN.</div>`;
+                return;
+            }
+
+            resDiv.innerHTML = "";
+            document.getElementById('chainBox').style.display = "block";
+            document.getElementById('path').innerText = route.join(" ➔ ");
+
+            // Logic: Only show flights departing after our previous arrival
+            const filtered = d.response.filter(f => {
+                if (!lastArr) return true;
+                return new Date(f.dep_time) > new Date(lastArr).getTime() + (90 * 60000);
+            });
+
+            if(filtered.length === 0) resDiv.innerHTML = "No connections found within timeframe.";
+
+            filtered.forEach(f => {
+                const div = document.createElement('div');
+                div.className = 'card';
+                div.innerHTML = `
+                    <b>To: ${f.arr_iata}</b><br>
+                    Dep: ${f.dep_time.split(' ')[1]} | Arr: ${f.arr_time.split(' ')[1]}<br>
+                    <button onclick="next('${f.arr_iata}', '${f.arr_time}')" style="margin-top:10px; font-size:0.7rem;">Fly Here & Search Next</button>
+                `;
+                resDiv.appendChild(div);
+            });
+        } catch (e) {
+            resDiv.innerHTML = "API Error. Check key.";
+        }
+    }
+
+    function next(code, arrTime) {
+        route.push(code);
+        lastArr = arrTime;
+        load(code);
+    }
+</script>
+</body>
+</html>
